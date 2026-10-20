@@ -280,7 +280,7 @@ pub fn mask_image_by_polygons(
         // 扫描线算法：对每行，收集所有多边形的交点后合并填充
         for y in 0..height {
             let yi = y as i32;
-            let mut intersections: Vec<i32> = Vec::new();
+            let mut intersections: Vec<i64> = Vec::new();
 
             // 遍历每个多边形环
             for pixels in &all_pixel_rings {
@@ -290,7 +290,8 @@ pub fn mask_image_by_polygons(
                     let (xi, yyi) = pixels[i];
                     let (xj, yyj) = pixels[j];
                     if (yyi > yi) != (yyj > yi) {
-                        let x_intersect = (xj - xi) * (yi - yyi) / (yyj - yyi) + xi;
+                        // 先用 i64 完成所有中间运算，防止大图边界乘积溢出。
+                            let x_intersect = crate::scanline::intersection_x(xi, yyi, xj, yyj, yi);
                         intersections.push(x_intersect);
                     }
                     j = i;

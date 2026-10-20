@@ -125,7 +125,7 @@ pub fn merge_and_export_streaming_png(
             for local_row in 0..TILE_SIZE {
                 let global_y = (strip_y_start + local_row) as i32;
 
-                let mut intersections: Vec<i32> = Vec::new();
+                let mut intersections: Vec<i64> = Vec::new();
                 for ring in &pixel_rings {
                     let n = ring.len();
                     let mut j = n - 1;
@@ -133,7 +133,8 @@ pub fn merge_and_export_streaming_png(
                         let (xi, yi) = ring[i];
                         let (xj, yj) = ring[j];
                         if (yi > global_y) != (yj > global_y) {
-                            let x_int = (xj - xi) * (global_y - yi) / (yj - yi) + xi;
+                            // 先用 i64 完成所有中间运算，防止大图边界乘积溢出。
+                            let x_int = crate::scanline::intersection_x(xi, yi, xj, yj, global_y);
                             intersections.push(x_int);
                         }
                         j = i;

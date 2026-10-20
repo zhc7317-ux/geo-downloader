@@ -4,6 +4,8 @@ pub mod tile;
 pub mod downloader;
 pub mod tianditu_tokens;
 pub mod merger;
+// 各种导出路径共用的 64 位安全交点计算。
+mod scanline;
 pub mod overlay;
 pub mod tile_crop;
 pub mod exporter;

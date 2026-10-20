@@ -250,7 +250,7 @@ pub fn merge_and_export_streaming_with_budget(
             let strip_y_start = (tile_y - y_min) * TILE_SIZE;
             for local_row in 0..TILE_SIZE {
                 let global_y = (strip_y_start + local_row) as i32;
-                let mut intersections: Vec<i32> = Vec::new();
+                let mut intersections: Vec<i64> = Vec::new();
                 for ring in &pixel_rings {
                     let n = ring.len();
                     let mut j = n - 1;
@@ -258,7 +258,8 @@ pub fn merge_and_export_streaming_with_budget(
                         let (xi, yi) = ring[i];
                         let (xj, yj) = ring[j];
                         if (yi > global_y) != (yj > global_y) {
-                            let x_int = (xj - xi) * (global_y - yi) / (yj - yi) + xi;
+                            // 先用 i64 完成所有中间运算，防止大图边界乘积溢出。
+                            let x_int = crate::scanline::intersection_x(xi, yi, xj, yj, global_y);
                             intersections.push(x_int);
                         }
                         j = i;
@@ -647,7 +648,7 @@ pub fn merge_and_export_dem_streaming_with_budget(
             for local_row in 0..TILE_SIZE {
                 let global_y = (strip_y_start + local_row) as i32;
 
-                let mut intersections: Vec<i32> = Vec::new();
+                let mut intersections: Vec<i64> = Vec::new();
                 for ring in &pixel_rings {
                     let n = ring.len();
                     let mut j = n - 1;
@@ -655,7 +656,8 @@ pub fn merge_and_export_dem_streaming_with_budget(
                         let (xi, yi) = ring[i];
                         let (xj, yj) = ring[j];
                         if (yi > global_y) != (yj > global_y) {
-                            let x_int = (xj - xi) * (global_y - yi) / (yj - yi) + xi;
+                            // 先用 i64 完成所有中间运算，防止大图边界乘积溢出。
+                            let x_int = crate::scanline::intersection_x(xi, yi, xj, yj, global_y);
                             intersections.push(x_int);
                         }
                         j = i;
@@ -666,8 +668,8 @@ pub fn merge_and_export_dem_streaming_with_budget(
                 let mut inside = vec![false; width_u];
                 let mut k = 0;
                 while k + 1 < intersections.len() {
-                    let x0 = intersections[k].max(0).min(width as i32) as usize;
-                    let x1 = intersections[k + 1].max(0).min(width as i32) as usize;
+                    let x0 = intersections[k].max(0).min(i64::from(width)) as usize;
+                    let x1 = intersections[k + 1].max(0).min(i64::from(width)) as usize;
                     for x in x0..x1 {
                         if x < inside.len() { inside[x] = true; }
                     }
