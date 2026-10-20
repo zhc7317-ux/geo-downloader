@@ -64,7 +64,7 @@ jobs:
       # Tauri 会按仓库配置先执行前端构建，再编译 Rust 后端并生成 NSIS 安装包。
       # --locked 要求遵守 src-tauri/Cargo.lock 中记录的 Rust 依赖版本。
       - name: Build Windows x64 exe and installer
-        run: tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+        run: tauri build --target x86_64-pc-windows-msvc --bundles nsis
 
       # 输入：编译产生的程序 exe 和安装器 exe。
       # 输出：artifact-output 文件夹，供下一步上传到 Actions 下载区。
