@@ -1,0 +1,93 @@
+# 文件在 GitHub 仓库中的位置：.github/workflows/build-fixed-windows.yml
+# 作用：在 GitHub 提供的 Windows 机器上测试修复、编译程序、生成 exe 安装包。
+name: Build fixed Windows exe
+
+# 只在你手动点击 Run workflow 后执行，上传文件本身不会立即开始编译。
+on:
+  workflow_dispatch:
+
+# 只需要读取你的仓库；该流程不会向原作者仓库提交内容或发布 Release。
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      # 下载你的仓库内容到 GitHub 的临时编译机器。
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      # Windows runner 自带 MSVC 和 Windows SDK，只需补上 Rust 工具链。
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # Node.js 和 npm 用来编译前端界面，以及运行 Tauri 打包命令。
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # 缓存 Rust 依赖，后续重复运行时可以减少下载和编译时间。
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # 与项目官方发布流程一样使用 npm install，兼容其可选依赖的锁文件。
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Install Tauri CLI
+        run: npm install --global @tauri-apps/cli@2
+
+      # 输入：新增 scanline.rs 中的大图回归测试。
+      # 输出：测试全部通过，否则立即停止构建，不生成可下载成果。
+      # 直接用 rustc 运行纯数学测试，无需为测试分配整幅巨型影像。
+      - name: Test large-image clipping fix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $testExe = Join-Path $env:RUNNER_TEMP 'scanline-tests.exe'
+          rustc --edition 2021 --test src-tauri/src/scanline.rs -C overflow-checks=yes -o $testExe
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to compile regression tests.' }
+          & $testExe --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Large-image regression tests failed.' }
+
+      # Tauri 会按仓库配置先执行前端构建，再编译 Rust 后端并生成 NSIS 安装包。
+      # --locked 要求遵守 src-tauri/Cargo.lock 中记录的 Rust 依赖版本。
+      - name: Build Windows x64 exe and installer
+        run: tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+
+      # 输入：编译产生的程序 exe 和安装器 exe。
+      # 输出：artifact-output 文件夹，供下一步上传到 Actions 下载区。
+      - name: Collect exe files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = 'src-tauri/target/x86_64-pc-windows-msvc/release'
+          $program = Join-Path $releaseDir 'geo-downloader.exe'
+          $installers = @(Get-ChildItem -Path "$releaseDir/bundle/nsis/*-setup.exe" -File)
+          if (-not (Test-Path -LiteralPath $program)) { throw "Program missing: $program" }
+          if ($installers.Count -eq 0) { throw 'Installer was not generated.' }
+          New-Item -ItemType Directory -Force -Path artifact-output | Out-Null
+          Copy-Item -LiteralPath $program -Destination artifact-output/GeoDownloader_fixed_windows_x64.exe
+          foreach ($installer in $installers) {
+            Copy-Item -LiteralPath $installer.FullName -Destination artifact-output
+          }
+
+      # 成功后打开这次运行页面，在底部 Artifacts 下载压缩包并解压即可。
+      - name: Upload downloadable exe files
+        uses: actions/upload-artifact@v4
+        with:
+          name: GeoDownloader-fixed-windows-x64
+          path: artifact-output/*.exe
+          if-no-files-found: error
+          retention-days: 30
